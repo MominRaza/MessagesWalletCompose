@@ -9,7 +9,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.mominraza.messages_wallet"
+        applicationId = "com.mominraza.messages_wallet_compose"
         minSdk = 30
         targetSdk = 35
         versionCode = 1
