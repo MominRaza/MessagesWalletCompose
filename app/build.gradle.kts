@@ -6,16 +6,17 @@ plugins {
 
 android {
     namespace = "com.mominraza.messages_wallet"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.mominraza.messages_wallet_compose"
-        minSdk = 30
-        targetSdk = 35
+        applicationId = "com.mominraza.messages_wallet"
+        minSdk = 29
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        applicationIdSuffix = ".compose"
     }
 
     buildTypes {
@@ -28,11 +29,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
