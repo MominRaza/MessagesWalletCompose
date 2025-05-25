@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
@@ -26,12 +28,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.Serializable
+
+@Serializable
+data object Home : NavKey
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(navBackStack: NavBackStack) {
     var menuExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -48,7 +55,10 @@ fun HomeScreen() {
                     ) {
                         DropdownMenuItem(
                             text = { Text("Settings") },
-                            onClick = { menuExpanded = false }
+                            onClick = {
+                                navBackStack.add(Settings)
+                                menuExpanded = false
+                            }
                         )
                         DropdownMenuItem(
                             text = { Text("Star Github Repo") },
@@ -67,16 +77,17 @@ fun HomeScreen() {
             modifier = Modifier
                 .padding(innerPadding)
                 .padding(horizontal = 6.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            BankCard()
-            BankCard()
-            BankCard()
+            BankCard(navBackStack)
+            BankCard(navBackStack)
+            BankCard(navBackStack)
         }
     }
 }
 
 @Composable
-private fun BankCard() {
+private fun BankCard(navBackStack: NavBackStack) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -94,7 +105,7 @@ private fun BankCard() {
             BankCardTransactionItem("May 21, 2025 at 10:51 AM", "- ₹140")
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(onClick = {}) {
+                Button(onClick = { navBackStack.add(Bank) }) {
                     Text("View All")
                 }
             }
@@ -111,10 +122,4 @@ private fun BankCardTransactionItem(dateTime: String, amount: String) {
         Text(dateTime)
         Text(amount)
     }
-}
-
-@Preview
-@Composable
-fun HomeScreenPreview() {
-    HomeScreen()
 }
