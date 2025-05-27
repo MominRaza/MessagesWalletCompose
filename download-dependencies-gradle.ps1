@@ -251,28 +251,19 @@ foreach ($dep in $cleanDependencies) {
             $localFile = Join-Path $localPath $file
             
             try {
-                $webClient = New-Object System.Net.WebClient
-                if ($repo -like "*dl.google.com*") {
-                    $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                }
-                
-                $webClient.DownloadFile($url, $localFile)
-                $webClient.Dispose()
-                
-                if (!$downloaded_any) {
-                    Write-ColorOutput "  ✓ $($dep.FullName)" $Green
-                    $downloaded++
-                }
+                Invoke-WebRequest -Uri $url -OutFile $localFile -UseBasicParsing
                 $downloaded_any = $true
                 break
             }
             catch {
                 # Continue to next file type or repository
             }
-        }
-    }
+        }    }
     
-    if (!$downloaded_any) {
+    if ($downloaded_any) {
+        Write-ColorOutput "  ✓ $($dep.FullName)" $Green
+        $downloaded++
+    } else {
         Write-ColorOutput "  ✗ $($dep.FullName)" $Red
         $failed++
     }
