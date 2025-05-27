@@ -1,5 +1,9 @@
 pluginManagement {
     repositories {
+        maven {
+            url = uri("file://${rootProject.projectDir}/localMavenRepo")
+            name = "LocalMavenRepo"
+        }
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -14,6 +18,10 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven {
+            url = uri("file://${rootProject.projectDir}/localMavenRepo")
+            name = "LocalMavenRepo"
+        }
         google()
         mavenCentral()
     }
