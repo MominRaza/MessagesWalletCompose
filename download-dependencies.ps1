@@ -201,7 +201,21 @@ $dependencies = @(
 )
 
 $repositories = @("https://maven.google.com", "https://repo1.maven.org/maven2", "https://plugins.gradle.org/m2")
-$baseDir = "C:\Users\jahmad4\StudioProjects\MessagesWalletCompose\localMavenRepo"
+$baseDir = "localMavenRepo"
+
+# If Force flag is used, delete the entire localMavenRepo directory
+if ($Force -and (Test-Path $baseDir)) {
+    Write-Host "Deleting existing localMavenRepo..." -ForegroundColor Yellow
+    Remove-Item -Path $baseDir -Recurse -Force
+    Start-Sleep -Seconds 3
+    
+    # Check if deletion was successful
+    if (Test-Path $baseDir) {
+        Write-Error "Failed to delete localMavenRepo directory. Please check if any files are in use and try again."
+        exit 1
+    }
+}
+
 $downloaded = 0
 $skipped = 0
 $failed = 0
@@ -219,7 +233,7 @@ foreach ($dependency in $dependencies) {
     $version = $parts[2]
     $artifactDir = "$baseDir\$group\$artifact\$version"
       if (-not $Force -and (Test-Path $artifactDir) -and ((Get-ChildItem -Path $artifactDir -File -ErrorAction SilentlyContinue).Count -gt 0)) {
-        Write-Host "≡ $dependency" -ForegroundColor Yellow
+        Write-Host "  ≡ $dependency" -ForegroundColor Yellow
         $skipped++
         continue
     }
@@ -247,10 +261,10 @@ foreach ($dependency in $dependencies) {
         if ($found) { $success = $true; break }
     }
       if ($success) {
-        Write-Host "✓ $dependency [$($downloadedTypes -join ', ')]" -ForegroundColor Green
+        Write-Host "  ✓ $dependency [$($downloadedTypes -join ', ')]" -ForegroundColor Green
         $downloaded++
     } else {
-        Write-Host "✗ $dependency" -ForegroundColor Red
+        Write-Host "  ✗ $dependency" -ForegroundColor Red
         $failed++
     }
 }
