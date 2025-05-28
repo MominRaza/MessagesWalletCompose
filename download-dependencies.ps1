@@ -176,16 +176,25 @@ foreach ($dep in $runtimeDeps) {
     
     $success = $false
     $repos = @($MavenRepo, $GoogleRepo)
-    $files = @("$artifact-$version.jar", "$artifact-$version.aar", "$artifact-$version.pom")
+    $files = @("$artifact-$version.jar", "$artifact-$version.aar")
     
+    # Always try to download POM file first
     foreach ($repo in $repos) {
-        if ($success) { break }
+        if (Download-File "$repo/$groupPath/$artifact/$version/$artifact-$version.pom" "$localPath\$artifact-$version.pom") {
+            $success = $true
+            break
+        }
+    }
+    
+    # Try to download JAR/AAR files
+    foreach ($repo in $repos) {
         foreach ($file in $files) {
             if (Download-File "$repo/$groupPath/$artifact/$version/$file" "$localPath\$file") {
                 $success = $true
                 break
             }
         }
+        if ($success) { break }
     }
     
     if ($success) {
