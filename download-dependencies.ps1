@@ -33,7 +33,7 @@ function Download-File {
 # Initialize repository
 if ($Force -and (Test-Path $LocalRepoPath)) {
     Write-Status "Cleaning repository..." "Warning"
-    Remove-Item $LocalRepoPath -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $LocalRepoPath -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 }
 if (!(Test-Path $LocalRepoPath)) {
     New-Item -ItemType Directory -Path $LocalRepoPath -Force | Out-Null
