@@ -105,7 +105,8 @@ foreach ($dep in $buildDeps) {    $parts = $dep -split ":"
     
     $pomFile = "$artifact-$version.pom"
     $jarFile = "$artifact-$version.jar"
-      # Skip if exists and not forcing
+    
+    # Skip if exists and not forcing
     if (!$Force) {
         $hasFiles = (Get-ChildItem $localPath -ErrorAction SilentlyContinue).Count -gt 0
         if ($hasFiles) {
@@ -166,7 +167,7 @@ foreach ($dep in $runtimeDeps) {
     
     # Skip if exists and not forcing
     if (!$Force) {
-        $hasFiles = (Get-ChildItem $localPath -Filter "*.$artifact-$version.*" -ErrorAction SilentlyContinue).Count -gt 0
+        $hasFiles = (Get-ChildItem $localPath -Filter "*$artifact-$version.*" -ErrorAction SilentlyContinue).Count -gt 0
         if ($hasFiles) {
             $skipped++
             continue
