@@ -1,40 +1,46 @@
 # Download Dependencies using Gradle Dependency Resolution
-# This script first downloads hardcoded build dependencies, then uses gradlew to get actual runtime dependencies and downloads them
 
 param(
-    [string]$LocalRepoPath = ".\localMavenRepo",
-    [switch]$CleanRepo = $false,
-    [switch]$SkipExisting = $true
+    [switch]$Force = $false
 )
 
-# Colors for output
-$Red = [System.ConsoleColor]::Red
-$Green = [System.ConsoleColor]::Green
-$Yellow = [System.ConsoleColor]::Yellow
-$Blue = [System.ConsoleColor]::Blue
-$Cyan = [System.ConsoleColor]::Cyan
-$Gray = [System.ConsoleColor]::Gray
+# Configuration
+$LocalRepoPath = ".\localMavenRepo"
+$GoogleRepo = "https://dl.google.com/dl/android/maven2"
+$MavenRepo = "https://repo1.maven.org/maven2"
 
-function Write-ColorOutput {
-    param([string]$Message, [System.ConsoleColor]$Color = [System.ConsoleColor]::White)
+function Write-Status {
+    param([string]$Message, [string]$Status = "Info")
+    $Color = switch($Status) {
+        "Success" { "Green" }
+        "Error" { "Red" }
+        "Warning" { "Yellow" }
+        "Info" { "Cyan" }
+    }
     Write-Host $Message -ForegroundColor $Color
 }
 
-# Create local repository directory
-if ($CleanRepo -and (Test-Path $LocalRepoPath)) {
-    Write-ColorOutput "Cleaning existing local repository..." $Yellow
-    Remove-Item $LocalRepoPath -Recurse -Force
+function Download-File {
+    param([string]$Url, [string]$OutFile)
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
 }
 
+# Initialize repository
+if ($Force -and (Test-Path $LocalRepoPath)) {
+    Write-Status "Cleaning repository..." "Warning"
+    Remove-Item $LocalRepoPath -Recurse -Force -ErrorAction SilentlyContinue
+}
 if (!(Test-Path $LocalRepoPath)) {
     New-Item -ItemType Directory -Path $LocalRepoPath -Force | Out-Null
 }
 
-# Step 0: Download hardcoded build dependencies first (required for gradle to work)
-$baseUrl = "https://dl.google.com/dl/android/maven2"
-$kotlinUrl = "https://repo1.maven.org/maven2"
-
-$hardcodedDeps = @(
+# Hardcoded build dependencies
+$buildDeps = @(
     "androidx.databinding:databinding-common:8.10.0",
     "androidx.databinding:databinding-compiler-common:8.10.0",
     "com.android.application:com.android.application.gradle.plugin:8.10.0",
@@ -82,196 +88,118 @@ $hardcodedDeps = @(
     "com.google.testing.platform:core-proto:0.0.9-alpha03"
 )
 
-$hardcodedDownloaded = 0
-$hardcodedSkipped = 0
-$hardcodedFailed = 0
+$downloaded = $skipped = $failed = 0
 
-foreach ($dep in $hardcodedDeps) {
-    $parts = $dep -split ":"
+# Download build dependencies
+foreach ($dep in $buildDeps) {    $parts = $dep -split ":"
+    if ($parts.Count -lt 3) { continue }
+    
     $group, $artifact, $version = $parts[0], $parts[1], $parts[2]
-    $isKotlin = $parts.Count -gt 3 -and $parts[3] -eq "kotlin"
-    $isPluginMarker = $artifact -like "*.gradle.plugin"
-    $isBom = $parts.Count -gt 3 -and $parts[3] -eq "bom"
+    $isPlugin = $artifact -like "*.gradle.plugin"
     
-    # Skip BOM versioned dependencies for now
-    if ($isBom) { continue }
-    
-    # Convert dot-separated group ID to slash-separated path
     $groupPath = $group -replace "\.", "/"
-    
-    $url = if ($isKotlin) { $kotlinUrl } else { $baseUrl }
-    $path = "$groupPath/$artifact/$version"
-    $localPath = Join-Path $LocalRepoPath $path
+    $repo = $GoogleRepo
+    $localPath = Join-Path $LocalRepoPath "$groupPath/$artifact/$version"
     
     if (!(Test-Path $localPath)) { New-Item -ItemType Directory -Path $localPath -Force | Out-Null }
     
     $pomFile = "$artifact-$version.pom"
     $jarFile = "$artifact-$version.jar"
-    
-    # Quick check if already exists
-    $pomExists = $SkipExisting -and (Test-Path "$localPath\$pomFile")
-    $jarExists = $SkipExisting -and (Test-Path "$localPath\$jarFile")
-    
-    if ($pomExists -or ($isPluginMarker -and $pomExists) -or (!$isPluginMarker -and $jarExists)) {
-        $hardcodedSkipped++
-        continue
-    }
-    
-    $downloadedAny = $false
-    
-    # Download POM
-    if (!$pomExists) {
-        try { 
-            Invoke-WebRequest -Uri "$url/$path/$pomFile" -OutFile "$localPath\$pomFile" -UseBasicParsing
-            $downloadedAny = $true
-        }
-        catch { 
-            Write-ColorOutput "  ✗ $dep" $Red
-        }
-    }
-    
-    # Download JAR (if not plugin marker)
-    if (!$isPluginMarker -and !$jarExists) {
-        try { 
-            Invoke-WebRequest -Uri "$url/$path/$jarFile" -OutFile "$localPath\$jarFile" -UseBasicParsing
-            $downloadedAny = $true
-        }
-        catch { 
-            if (!$downloadedAny) {
-                Write-ColorOutput "  ✗ $dep" $Red
-            }
-        }
-    }
-    
-    if ($downloadedAny) {
-        Write-ColorOutput "  ✓ $dep" $Green
-        $hardcodedDownloaded++
-    } else {
-        $hardcodedFailed++
-    }
-}
-
-# Step 1: Get runtime dependencies using Gradle
-$dependencyOutput = & .\gradlew app:dependencies --configuration debugRuntimeClasspath 2>&1 | Out-String
-if ($LASTEXITCODE -ne 0) {
-    Write-ColorOutput "Error: Failed to get dependencies from Gradle" $Red
-    exit 1
-}
-
-# Parse and clean dependencies
-$dependencies = @()
-$dependencyLines = $dependencyOutput -split "`n"
-
-foreach ($line in $dependencyLines) {
-    if ($line -match '[\+\-\|\\`\s]*([a-zA-Z0-9\.\-_]+):([a-zA-Z0-9\.\-_]+):([0-9\.\-a-zA-Z]+)(\s*\(\*\))?') {
-        $groupId = $matches[1]
-        $artifactId = $matches[2]
-        $version = $matches[3]
-        
-        # Skip duplicates and invalid versions
-        if ($version -notmatch '^\d' -or $line -match '\(\*\)$') { continue }
-        
-        $dependency = "$groupId`:$artifactId`:$version"
-        if ($dependencies -notcontains $dependency) {
-            $dependencies += $dependency
-        }
-    }
-}
-
-$cleanDependencies = @()
-foreach ($dep in $dependencies) {
-    $parts = $dep -split ':'
-    if ($parts.Count -eq 3) {
-        $groupId = $parts[0].Trim()
-        $artifactId = $parts[1].Trim()
-        $version = $parts[2].Trim()
-        
-        # Skip invalid entries
-        if ([string]::IsNullOrWhiteSpace($groupId) -or 
-            [string]::IsNullOrWhiteSpace($artifactId) -or 
-            [string]::IsNullOrWhiteSpace($version) -or
-            $version -match '[\[\(\)\]]' -or $version -contains ',' -or $version -eq 'unspecified') {
-            continue
-        }
-        
-        $cleanDependencies += @{
-            GroupId = $groupId
-            ArtifactId = $artifactId
-            Version = $version
-            FullName = "$groupId`:$artifactId`:$version"
-        }    }
-}
-
-$repositories = @(
-    "https://repo1.maven.org/maven2",
-    "https://dl.google.com/dl/android/maven2"
-)
-
-$downloaded = 0
-$failed = 0
-$skipped = 0
-
-foreach ($dep in $cleanDependencies) {
-    $groupPath = $dep.GroupId -replace '\.', '/'
-    $artifactPath = "$groupPath/$($dep.ArtifactId)/$($dep.Version)"
-    $jarFile = "$($dep.ArtifactId)-$($dep.Version).jar"
-    $aarFile = "$($dep.ArtifactId)-$($dep.Version).aar"
-    $pomFile = "$($dep.ArtifactId)-$($dep.Version).pom"
-    
-    $localPath = Join-Path $LocalRepoPath $artifactPath
-    
-    # Create directory structure
-    if (!(Test-Path $localPath)) {
-        New-Item -ItemType Directory -Path $localPath -Force | Out-Null
-    }
-    
-    # Quick check: if any files exist, skip this dependency
-    if ($SkipExisting) {
-        $pomExists = Test-Path (Join-Path $localPath $pomFile)
-        $jarExists = Test-Path (Join-Path $localPath $jarFile)
-        $aarExists = Test-Path (Join-Path $localPath $aarFile)
-        
-        if ($pomExists -or $jarExists -or $aarExists) {
+      # Skip if exists and not forcing
+    if (!$Force) {
+        $hasFiles = (Get-ChildItem $localPath -ErrorAction SilentlyContinue).Count -gt 0
+        if ($hasFiles) {
             $skipped++
             continue
         }
     }
     
-    $downloaded_any = $false
+    $success = $false
     
-    # Try to download from each repository
-    foreach ($repo in $repositories) {
-        if ($downloaded_any) { break }
-        
-        # Try JAR first, then AAR, then POM
-        $filesToTry = @($jarFile, $aarFile, $pomFile)
-        
-        foreach ($file in $filesToTry) {
-            $url = "$repo/$artifactPath/$file"
-            $localFile = Join-Path $localPath $file
-            
-            try {
-                Invoke-WebRequest -Uri $url -OutFile $localFile -UseBasicParsing
-                $downloaded_any = $true
-                break
-            }
-            catch {
-                # Continue to next file type or repository
-            }
-        }    }
+    # Download files
+    if (Download-File "$repo/$groupPath/$artifact/$version/$pomFile" "$localPath\$pomFile") {
+        $success = $true
+    }
+    if (!$isPlugin -and (Download-File "$repo/$groupPath/$artifact/$version/$jarFile" "$localPath\$jarFile")) {
+        $success = $true
+    }
     
-    if ($downloaded_any) {
-        Write-ColorOutput "  ✓ $($dep.FullName)" $Green
+    if ($success) {
+        Write-Status "  ✓ $dep" "Success"
         $downloaded++
     } else {
-        Write-ColorOutput "  ✗ $($dep.FullName)" $Red
+        Write-Status "  ✗ $dep" "Error"
+        $failed++
+    }
+}
+
+# Get runtime dependencies from Gradle
+try {
+    $gradleOutput = & .\gradlew app:dependencies --configuration debugRuntimeClasspath 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "Gradle failed" }
+} catch {
+    Write-Status "Error: Failed to get dependencies from Gradle - $_" "Error"
+    exit 1
+}
+
+# Parse runtime dependencies
+$runtimeDeps = @()
+foreach ($line in ($gradleOutput -split "`n")) {
+    if ($line -match '[\+\-\|\\`\s]*([a-zA-Z0-9\.\-_]+):([a-zA-Z0-9\.\-_]+):([0-9\.\-a-zA-Z]+)') {
+        $group, $artifact, $version = $matches[1].Trim(), $matches[2].Trim(), $matches[3].Trim()
+        if ($version -match '^\d' -and $line -notmatch '\(\*\)$' -and $version -ne 'unspecified') {
+            $depName = "$group`:$artifact`:$version"
+            if ($runtimeDeps -notcontains $depName) {
+                $runtimeDeps += $depName
+            }
+        }
+    }
+}
+
+# Download runtime dependencies  
+foreach ($dep in $runtimeDeps) {
+    $group, $artifact, $version = $dep -split ":"
+    $groupPath = $group -replace '\.', '/'
+    $localPath = Join-Path $LocalRepoPath "$groupPath/$artifact/$version"
+    
+    if (!(Test-Path $localPath)) { New-Item -ItemType Directory -Path $localPath -Force | Out-Null }
+    
+    # Skip if exists and not forcing
+    if (!$Force) {
+        $hasFiles = (Get-ChildItem $localPath -Filter "*.$artifact-$version.*" -ErrorAction SilentlyContinue).Count -gt 0
+        if ($hasFiles) {
+            $skipped++
+            continue
+        }
+    }
+    
+    $success = $false
+    $repos = @($MavenRepo, $GoogleRepo)
+    $files = @("$artifact-$version.jar", "$artifact-$version.aar", "$artifact-$version.pom")
+    
+    foreach ($repo in $repos) {
+        if ($success) { break }
+        foreach ($file in $files) {
+            if (Download-File "$repo/$groupPath/$artifact/$version/$file" "$localPath\$file") {
+                $success = $true
+                break
+            }
+        }
+    }
+    
+    if ($success) {
+        Write-Status "  ✓ $dep" "Success"
+        $downloaded++
+    } else {
+        Write-Status "  ✗ $dep" "Error"
         $failed++
     }
 }
 
 # Summary
-Write-ColorOutput "`nTotal: $($hardcodedDownloaded + $downloaded) downloaded, $($hardcodedSkipped + $skipped) skipped, $($hardcodedFailed + $failed) failed" $Green
-Write-Host "Total files: $((Get-ChildItem -Path '.\localMavenRepo' -File -Recurse | Measure-Object).Count)"
-Write-Host "JAR files: $((Get-ChildItem -Path '.\localMavenRepo' -Filter '*.jar' -File -Recurse | Measure-Object).Count)"
-Write-Host "POM files: $((Get-ChildItem -Path '.\localMavenRepo' -Filter '*.pom' -File -Recurse | Measure-Object).Count)"
-Write-Host "AAR files: $((Get-ChildItem -Path '.\localMavenRepo' -Filter '*.aar' -File -Recurse | Measure-Object).Count)"
+$totalFiles = (Get-ChildItem $LocalRepoPath -File -Recurse -ErrorAction SilentlyContinue).Count
+$jarCount = (Get-ChildItem $LocalRepoPath -Filter "*.jar" -File -Recurse -ErrorAction SilentlyContinue).Count
+$pomCount = (Get-ChildItem $LocalRepoPath -Filter "*.pom" -File -Recurse -ErrorAction SilentlyContinue).Count
+$aarCount = (Get-ChildItem $LocalRepoPath -Filter "*.aar" -File -Recurse -ErrorAction SilentlyContinue).Count
+
+Write-Status "`nSummary: $downloaded downloaded, $skipped skipped, $failed failed | Files: $totalFiles total ($jarCount JAR, $pomCount POM, $aarCount AAR)" "Info"
